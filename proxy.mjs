@@ -98,16 +98,19 @@ async function runInstance(browsers, instanceIndex) {
 async function runMassiveTraffic() {
   console.log("Launching Headless Browsers (Chromium, Firefox, WebKit)...");
   
-  // Disable /dev/shm usage and sandbox to prevent memory crashes on 256GB machine
-  const launchOptions = { 
+  // Disable /dev/shm usage and sandbox for Chromium to prevent memory crashes
+  const chromiumOptions = { 
     headless: true,
     args: ['--disable-dev-shm-usage', '--no-sandbox']
   };
   
+  // Firefox and WebKit don't support those Chromium flags
+  const standardOptions = { headless: true };
+
   const browsers = {
-    chromium: await chromium.launch(launchOptions),
-    firefox: await firefox.launch(launchOptions),
-    webkit: await webkit.launch(launchOptions)
+    chromium: await chromium.launch(chromiumOptions),
+    firefox: await firefox.launch(standardOptions),
+    webkit: await webkit.launch(standardOptions)
   };
 
   console.log(`Browsers launched. Starting campaign to hit ${TOTAL_CLICKS_GOAL} clicks...`);
