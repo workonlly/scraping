@@ -8,11 +8,11 @@ const PROXY_CONFIG = {
 
 const TARGET_URL = 'https://daleelerah.info/pop-go/62492';
 const TOTAL_CLICKS_GOAL = 10000000;   // 10 million clicks
-const BATCH_SIZE = 1000;              // Run 1000 parallel contexts
+const BATCH_SIZE = 3000;              // Pushing 256GB RAM to its absolute limit
 const MAX_RETRIES = 2;                // retry up to 2 times
 const SESSION_DURATION = 60000;       // Exactly 60 seconds per session
 const DELAY_BETWEEN_BATCHES = 2000;   // 2s cooldown between batches
-const STAGGER_DELAY = 30;             // 30ms stagger so all 1000 launch within 30 seconds
+const STAGGER_DELAY = 10;             // 10ms stagger to rapidly launch 3000 within 30s
 
 // Device profiles for randomization
 const deviceNames = Object.keys(devices);
@@ -97,8 +97,13 @@ async function runInstance(browsers, instanceIndex) {
 
 async function runMassiveTraffic() {
   console.log("Launching Headless Browsers (Chromium, Firefox, WebKit)...");
-  // Launch all 3 browsers to share the load. headless is true by default.
-  const launchOptions = { headless: true };
+  
+  // Disable /dev/shm usage and sandbox to prevent memory crashes on 256GB machine
+  const launchOptions = { 
+    headless: true,
+    args: ['--disable-dev-shm-usage', '--no-sandbox']
+  };
+  
   const browsers = {
     chromium: await chromium.launch(launchOptions),
     firefox: await firefox.launch(launchOptions),
