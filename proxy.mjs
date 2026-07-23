@@ -8,11 +8,11 @@ const PROXY_CONFIG = {
 
 const TARGET_URL = 'https://daleelerah.info/pop-go/62492';
 const TOTAL_CLICKS_GOAL = 10000000;   // 10 million clicks
-const BATCH_SIZE = 3000;              // Pushing 256GB RAM to its absolute limit
+const BATCH_SIZE = 800;               // Fits perfectly in 64GB RAM (e2-highmem-8)
 const MAX_RETRIES = 2;                // retry up to 2 times
 const SESSION_DURATION = 60000;       // Exactly 60 seconds per session
 const DELAY_BETWEEN_BATCHES = 2000;   // 2s cooldown between batches
-const STAGGER_DELAY = 10;             // 10ms stagger to rapidly launch 3000 within 30s
+const STAGGER_DELAY = 20;             // 20ms stagger to launch 800 within 16s
 
 // Device profiles for randomization
 const deviceNames = Object.keys(devices);
