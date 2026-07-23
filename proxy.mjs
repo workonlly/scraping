@@ -8,11 +8,11 @@ const PROXY_CONFIG = {
 
 const TARGET_URL = 'https://daleelerah.info/pop-go/62492';
 const TOTAL_CLICKS_GOAL = 10000000;   // 10 million clicks
-const BATCH_SIZE = 50;                // Number of browsers to run perfectly in parallel (Requires high RAM, change as needed)
+const BATCH_SIZE = 1000;              // Run 1000 parallel contexts
 const MAX_RETRIES = 2;                // retry up to 2 times
 const SESSION_DURATION = 60000;       // Exactly 60 seconds per session
 const DELAY_BETWEEN_BATCHES = 2000;   // 2s cooldown between batches
-const STAGGER_DELAY = 100;            // 0.1s stagger to not hammer CPU simultaneously
+const STAGGER_DELAY = 30;             // 30ms stagger so all 1000 launch within 30 seconds
 
 // Device profiles for randomization
 const deviceNames = Object.keys(devices);
@@ -61,14 +61,25 @@ async function runInstance(browsers, instanceIndex) {
         waitUntil: 'domcontentloaded',
       });
 
-      // 2. Random human-like behavior
-      await page.mouse.move(getRandomInt(100, 500), getRandomInt(100, 500), { steps: getRandomInt(5, 15) });
-      await sleep(getRandomInt(1000, 3000));
+      console.log(`[Instance ${instanceIndex}] Page loaded. Starting 60s session with move and click...`);
 
-      console.log(`[Instance ${instanceIndex}] Page loaded. Keeping session open for exactly 60 seconds...`);
+      // 2. Split the 60 seconds so the click happens at a random time during the session
+      const timeBeforeClick = getRandomInt(10000, 50000); // Random time between 10s and 50s
+      const timeAfterClick = SESSION_DURATION - timeBeforeClick;
 
-      // 3. Keep session open for EXACTLY 60 seconds
-      await sleep(SESSION_DURATION);
+      await sleep(timeBeforeClick);
+
+      // 3. Move mouse in exactly 5 steps to random coordinates
+      const targetX = getRandomInt(100, 800);
+      const targetY = getRandomInt(100, 800);
+      await page.mouse.move(targetX, targetY, { steps: 5 });
+      
+      // 4. Perform a click
+      await page.mouse.click(targetX, targetY);
+      console.log(`[Instance ${instanceIndex}] Clicked at (${targetX}, ${targetY}). Waiting remaining ${timeAfterClick / 1000}s...`);
+      
+      // 5. Wait the remaining time to complete the exactly 60-second session
+      await sleep(timeAfterClick);
 
       console.log(`[Instance ${instanceIndex}] ✅ Completed 60s session successfully.`);
       return true; // success — exit retry loop
