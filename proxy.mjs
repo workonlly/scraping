@@ -7,14 +7,14 @@ const PROXY_CONFIG = {
 };
 
 const TARGET_URL = 'https://daleelerah.info/pop-go/62492';
-const TOTAL_CLICKS_GOAL = 10000000;   // 10 million clicks
-const BATCH_SIZE = 800;               // Fits perfectly in 64GB RAM (e2-highmem-8)
-const MAX_RETRIES = 2;                // retry up to 2 times
-const SESSION_DURATION = 60000;       // Exactly 60 seconds per session
-const DELAY_BETWEEN_BATCHES = 2000;   // 2s cooldown between batches
-const STAGGER_DELAY = 20;             // 20ms stagger to launch 800 within 16s
+const TOTAL_CLICKS_GOAL = 10000000;
+const BATCH_SIZE = 160;
+const MAX_RETRIES = 2;
+const SESSION_DURATION = 5000;
+const DELAY_BETWEEN_BATCHES = 1000;
+const STAGGER_DELAY = 50;
+const PROXY_TIMEOUT = 120000;
 
-// Device profiles for randomization
 const deviceNames = Object.keys(devices);
 
 function sleep(ms) {
@@ -31,80 +31,64 @@ function getRandomDevice() {
 }
 
 async function runInstance(browsers, instanceIndex) {
-  // Randomly pick a browser engine (chromium, firefox, webkit)
   const engines = Object.keys(browsers);
   const randomEngine = engines[getRandomInt(0, engines.length - 1)];
   const browser = browsers[randomEngine];
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    // Randomize device profile (User-Agent, viewport size, mobile/desktop, etc.)
     const randomDevice = getRandomDevice();
 
-    // Create new context with proxy and random device profile
-    let context;
-    let page;
-    try {
-      context = await browser.newContext({
-        ...randomDevice.config,
-        proxy: PROXY_CONFIG,
-        ignoreHTTPSErrors: true
-      });
+    const context = await browser.newContext({
+      ...randomDevice.config,
+      proxy: PROXY_CONFIG,
+      ignoreHTTPSErrors: true
+    });
 
-      context.setDefaultTimeout(SESSION_DURATION + 30000); // allow extra time for load
-      page = await context.newPage();
+    context.setDefaultTimeout(PROXY_TIMEOUT);
+    context.setDefaultNavigationTimeout(PROXY_TIMEOUT);
+    const page = await context.newPage();
 
-      console.log(`[Instance ${instanceIndex}] Starting as ${randomDevice.name} on ${randomEngine} (Attempt ${attempt}/${MAX_RETRIES})`);
+    console.log(`[Instance ${instanceIndex}] Starting as ${randomDevice.name} on ${randomEngine} (Attempt ${attempt}/${MAX_RETRIES})`);
 
-      // 1. Navigate to target url
-      await page.goto(TARGET_URL, {
-        timeout: SESSION_DURATION + 30000,
-        waitUntil: 'domcontentloaded',
-      });
+    const success = await page.goto(TARGET_URL, {
+      timeout: PROXY_TIMEOUT,
+      waitUntil: 'domcontentloaded'
+    }).then(async () => {
+      console.log(`[Instance ${instanceIndex}] Page loaded. Starting ${SESSION_DURATION / 1000}s session with move and click...`);
 
-      console.log(`[Instance ${instanceIndex}] Page loaded. Starting 60s session with move and click...`);
-
-      // 2. Split the 60 seconds so the click happens at a random time during the session
-      const timeBeforeClick = getRandomInt(10000, 50000); // Random time between 10s and 50s
+      const timeBeforeClick = getRandomInt(Math.floor(SESSION_DURATION * 0.2), Math.floor(SESSION_DURATION * 0.8));
       const timeAfterClick = SESSION_DURATION - timeBeforeClick;
 
       await sleep(timeBeforeClick);
 
-      // 3. Move mouse in exactly 5 steps to random coordinates
       const targetX = getRandomInt(100, 800);
       const targetY = getRandomInt(100, 800);
       await page.mouse.move(targetX, targetY, { steps: 5 });
-      
-      // 4. Perform a click
       await page.mouse.click(targetX, targetY);
       console.log(`[Instance ${instanceIndex}] Clicked at (${targetX}, ${targetY}). Waiting remaining ${timeAfterClick / 1000}s...`);
-      
-      // 5. Wait the remaining time to complete the exactly 60-second session
-      await sleep(timeAfterClick);
 
-      console.log(`[Instance ${instanceIndex}] ✅ Completed 60s session successfully.`);
-      return true; // success — exit retry loop
-    } catch (error) {
+      await sleep(timeAfterClick);
+      console.log(`[Instance ${instanceIndex}] ✅ Completed ${SESSION_DURATION / 1000}s session successfully.`);
+      return true;
+    }).catch(async (error) => {
       console.error(`[Instance ${instanceIndex}] ❌ Attempt ${attempt} failed: ${error.message}`);
       if (attempt < MAX_RETRIES) {
-        await sleep(2000 + Math.random() * 3000); // Backoff before retry
+        await sleep(2000 + Math.random() * 3000);
       }
-    } finally {
-      if (context) await context.close();
-    }
+      return false;
+    });
+
+    await context.close();
+    if (success) return true;
   }
-  return false; // all attempts failed
+  return false;
 }
 
 async function runMassiveTraffic() {
-  console.log("Launching Headless Browsers (Chromium, Firefox, WebKit)...");
-  
-  // Disable /dev/shm usage and sandbox for Chromium to prevent memory crashes
   const chromiumOptions = { 
     headless: true,
     args: ['--disable-dev-shm-usage', '--no-sandbox']
   };
-  
-  // Firefox and WebKit don't support those Chromium flags
   const standardOptions = { headless: true };
 
   const browsers = {
@@ -113,7 +97,7 @@ async function runMassiveTraffic() {
     webkit: await webkit.launch(standardOptions)
   };
 
-  console.log(`Browsers launched. Starting campaign to hit ${TOTAL_CLICKS_GOAL} clicks...`);
+  console.log("Browsers launched. Starting campaign...");
   console.log(`Running max concurrency: ${BATCH_SIZE} parallel sessions per batch.\n`);
 
   let succeeded = 0;
@@ -141,14 +125,12 @@ async function runMassiveTraffic() {
 
     console.log(`\nBatch ${batchNum} done. Total Success: ${succeeded}, Total Failed: ${failed}.`);
 
-    // Cooldown between batches to let network/RAM catch its breath
     if (batchEnd < TOTAL_CLICKS_GOAL) {
       console.log(`Waiting ${DELAY_BETWEEN_BATCHES}ms before next batch...`);
       await sleep(DELAY_BETWEEN_BATCHES);
     }
   }
 
-  // Cleanup
   console.log("\nClosing all browsers...");
   await browsers.chromium.close();
   await browsers.firefox.close();
