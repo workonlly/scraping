@@ -11,7 +11,6 @@ const TOTAL_CLICKS_GOAL = 10000000;
 const BATCH_SIZE = 240;
 const MAX_RETRIES = 2;
 const SESSION_DURATION = 5000;
-const DELAY_BETWEEN_BATCHES = 1000;
 const STAGGER_DELAY = 60;
 const PROXY_TIMEOUT = 120000;
 
@@ -104,16 +103,16 @@ async function runMassiveTraffic() {
   const standardOptions = { headless: true };
 
   console.log("Starting campaign...");
-  console.log(`Running max concurrency: ${BATCH_SIZE} parallel sessions per batch.\n`);
+  console.log(`Running max concurrency: ${BATCH_SIZE} parallel sessions.\n`);
 
   let succeeded = 0;
   let failed = 0;
+  let completedCount = 0;
 
-  for (let i = 0; i < TOTAL_CLICKS_GOAL; i += BATCH_SIZE) {
-    const batchNum = Math.floor(i / BATCH_SIZE) + 1;
-    const batchEnd = Math.min(i + BATCH_SIZE, TOTAL_CLICKS_GOAL);
+  for (let i = 0; i < TOTAL_CLICKS_GOAL; i += 1000) {
+    const segmentEnd = Math.min(i + 1000, TOTAL_CLICKS_GOAL);
     console.log(`\n======================================================`);
-    console.log(`--- Starting Batch ${batchNum} (instances ${i}–${batchEnd - 1}) ---`);
+    console.log(`--- Starting Cycle (instances ${i}–${segmentEnd - 1}) ---`);
     console.log(`======================================================\n`);
 
     const browsers = await Promise.all([
@@ -134,31 +133,42 @@ async function runMassiveTraffic() {
       continue;
     }
 
-    const tasks = [];
-    for (let j = i; j < batchEnd; j++) {
-      tasks.push(
-        sleep(STAGGER_DELAY * (j - i)).then(() => runInstance(browsers, j))
-      );
-    }
+    let activeCount = 0;
+    let startedInSegment = 0;
+    const segmentSize = segmentEnd - i;
 
-    const results = await Promise.allSettled(tasks);
-    for (const r of results) {
-      if (r.status === 'fulfilled' && r.value === true) succeeded++;
-      else failed++;
-    }
+    const runQueue = async () => {
+      while (startedInSegment < segmentSize) {
+        if (activeCount < BATCH_SIZE) {
+          const instanceIndex = i + startedInSegment;
+          startedInSegment++;
+          activeCount++;
 
-    console.log(`\nBatch ${batchNum} done. Total Success: ${succeeded}, Total Failed: ${failed}.`);
+          runInstance(browsers, instanceIndex).then((success) => {
+            activeCount--;
+            completedCount++;
+            if (success) succeeded++; else failed++;
+            console.log(`[Progress] Completed: ${completedCount}/${TOTAL_CLICKS_GOAL} | Active: ${activeCount} | Success: ${succeeded} | Failed: ${failed}`);
+          });
+
+          await sleep(STAGGER_DELAY);
+        } else {
+          await sleep(50);
+        }
+      }
+
+      while (activeCount > 0) {
+        await sleep(100);
+      }
+    };
+
+    await runQueue();
 
     await Promise.all([
       withTimeout(browsers.chromium.close(), 15000),
       withTimeout(browsers.firefox.close(), 15000),
       withTimeout(browsers.webkit.close(), 15000)
     ]).catch(() => {});
-
-    if (batchEnd < TOTAL_CLICKS_GOAL) {
-      console.log(`Waiting ${DELAY_BETWEEN_BATCHES}ms before next batch...`);
-      await sleep(DELAY_BETWEEN_BATCHES);
-    }
   }
 
   console.log(`\nTraffic Campaign Finished. Total Succeeded: ${succeeded}, Total Failed: ${failed}.`);
