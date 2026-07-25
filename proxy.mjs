@@ -8,10 +8,10 @@ const PROXY_CONFIG = {
 
 const TARGET_URL = 'https://daleelerah.info/pop-go/62492';
 const TOTAL_CLICKS_GOAL = 10000000;
-const BATCH_SIZE = 240;
+const BATCH_SIZE = 120;
 const MAX_RETRIES = 2;
-const SESSION_DURATION = 5000;
-const STAGGER_DELAY = 60;
+const SESSION_DURATION = 60000;
+const STAGGER_DELAY = 100;
 const PROXY_TIMEOUT = 120000;
 
 const deviceNames = Object.keys(devices);
@@ -109,8 +109,8 @@ async function runMassiveTraffic() {
   let failed = 0;
   let completedCount = 0;
 
-  for (let i = 0; i < TOTAL_CLICKS_GOAL; i += 1000) {
-    const segmentEnd = Math.min(i + 1000, TOTAL_CLICKS_GOAL);
+  for (let i = 0; i < TOTAL_CLICKS_GOAL; i += 500) {
+    const segmentEnd = Math.min(i + 500, TOTAL_CLICKS_GOAL);
     console.log(`\n======================================================`);
     console.log(`--- Starting Cycle (instances ${i}–${segmentEnd - 1}) ---`);
     console.log(`======================================================\n`);
