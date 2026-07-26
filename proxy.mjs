@@ -1,18 +1,30 @@
-import { chromium, firefox, webkit, devices } from 'playwright';
+import { chromium, devices } from 'playwright';
+import os from 'os';
 
 const PROXY_CONFIG = {
   server: 'http://global.rpip.lokiproxy.com:35001',
-  username: 'USER786012-session-5Q9UwGc3eP8',
+  username: 'USER786012-session-5QcJSBNn78c',
   password: 'a590db'
 };
 
 const TARGET_URL = 'https://daleelerah.info/pop-go/62492';
 const TOTAL_CLICKS_GOAL = 10000000;
-const BATCH_SIZE = 120;
+
+const isWin = os.platform() === 'win32';
+const BATCH_SIZE = isWin ? 5 : 120;
+const STAGGER_DELAY = isWin ? 1000 : 100;
 const MAX_RETRIES = 2;
 const SESSION_DURATION = 60000;
-const STAGGER_DELAY = 100;
 const PROXY_TIMEOUT = 120000;
+
+const chromiumOptions = { 
+  headless: true,
+  args: isWin 
+    ? ['--disable-gpu', '--disable-software-rasterizer']
+    : ['--disable-dev-shm-usage', '--no-sandbox', '--disable-gpu', '--disable-software-rasterizer']
+};
+
+const browserWrapper = { chromium: null };
 
 const deviceNames = Object.keys(devices);
 
@@ -36,13 +48,29 @@ function getRandomDevice() {
   return { name: randomDeviceName, config: devices[randomDeviceName] };
 }
 
-async function runInstance(browsers, instanceIndex) {
-  const engines = Object.keys(browsers);
-  const randomEngine = engines[getRandomInt(0, engines.length - 1)];
-  const browser = browsers[randomEngine];
+async function getBrowser(forceRecreate = false) {
+  if (forceRecreate || !browserWrapper.chromium || !browserWrapper.chromium.isConnected()) {
+    if (browserWrapper.chromium) {
+      try {
+        await withTimeout(browserWrapper.chromium.close(), 5000);
+      } catch (e) {}
+    }
+    browserWrapper.chromium = await chromium.launch(chromiumOptions).catch(error => {
+      console.error("❌ Failed to launch Chromium browser:", error.message);
+      return null;
+    });
+  }
+  return browserWrapper.chromium;
+}
 
+async function runInstance(instanceIndex) {
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     const randomDevice = getRandomDevice();
+    const browser = await getBrowser();
+    if (!browser) {
+      await sleep(2000);
+      continue;
+    }
 
     const result = await browser.newContext({
       ...randomDevice.config,
@@ -53,7 +81,7 @@ async function runInstance(browsers, instanceIndex) {
       context.setDefaultNavigationTimeout(PROXY_TIMEOUT);
       const page = await context.newPage();
 
-      console.log(`[Instance ${instanceIndex}] Starting as ${randomDevice.name} on ${randomEngine} (Attempt ${attempt}/${MAX_RETRIES})`);
+      console.log(`[Instance ${instanceIndex}] Starting as ${randomDevice.name} (Attempt ${attempt}/${MAX_RETRIES})`);
 
       const success = await page.goto(TARGET_URL, {
         timeout: PROXY_TIMEOUT,
@@ -96,12 +124,6 @@ async function runInstance(browsers, instanceIndex) {
 }
 
 async function runMassiveTraffic() {
-  const chromiumOptions = { 
-    headless: true,
-    args: ['--disable-dev-shm-usage', '--no-sandbox']
-  };
-  const standardOptions = { headless: true };
-
   console.log("Starting campaign...");
   console.log(`Running max concurrency: ${BATCH_SIZE} parallel sessions.\n`);
 
@@ -115,20 +137,8 @@ async function runMassiveTraffic() {
     console.log(`--- Starting Cycle (instances ${i}–${segmentEnd - 1}) ---`);
     console.log(`======================================================\n`);
 
-    const browsers = await Promise.all([
-      chromium.launch(chromiumOptions),
-      firefox.launch(standardOptions),
-      webkit.launch(standardOptions)
-    ]).then(([chromiumBrowser, firefoxBrowser, webkitBrowser]) => ({
-      chromium: chromiumBrowser,
-      firefox: firefoxBrowser,
-      webkit: webkitBrowser
-    })).catch(error => {
-      console.error("❌ Failed to launch browser engines:", error.message);
-      return null;
-    });
-
-    if (!browsers) {
+    const browser = await getBrowser(true);
+    if (!browser) {
       await sleep(5000);
       continue;
     }
@@ -144,7 +154,7 @@ async function runMassiveTraffic() {
           startedInSegment++;
           activeCount++;
 
-          runInstance(browsers, instanceIndex).then((success) => {
+          runInstance(instanceIndex).then((success) => {
             activeCount--;
             completedCount++;
             if (success) succeeded++; else failed++;
@@ -164,11 +174,10 @@ async function runMassiveTraffic() {
 
     await runQueue();
 
-    await Promise.all([
-      withTimeout(browsers.chromium.close(), 15000),
-      withTimeout(browsers.firefox.close(), 15000),
-      withTimeout(browsers.webkit.close(), 15000)
-    ]).catch(() => {});
+    if (browserWrapper.chromium) {
+      await withTimeout(browserWrapper.chromium.close(), 15000).catch(() => {});
+      browserWrapper.chromium = null;
+    }
   }
 
   console.log(`\nTraffic Campaign Finished. Total Succeeded: ${succeeded}, Total Failed: ${failed}.`);
