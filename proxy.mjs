@@ -1,9 +1,9 @@
 import { chromium, firefox, webkit, devices } from 'playwright';
 
 const PROXY_CONFIG = {
-  server: 'http://global.rotgb.711proxy.com:10000',
-  username: 'USER255727-zone-custom-region-US',
-  password: '9005f6'
+  server: 'http://global.rpip.lokiproxy.com:35001',
+  username: 'USER786012-session-5Q9UwGc3eP8',
+  password: 'a590db'
 };
 
 const TARGET_URL = 'https://daleelerah.info/pop-go/62492';
