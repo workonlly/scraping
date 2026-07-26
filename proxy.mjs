@@ -1,4 +1,4 @@
-import { chromium, devices } from 'playwright';
+import { chromium, firefox, webkit, devices } from 'playwright';
 import os from 'os';
 
 const PROXY_CONFIG = {
@@ -24,7 +24,9 @@ const chromiumOptions = {
     : ['--disable-dev-shm-usage', '--no-sandbox', '--disable-gpu', '--disable-software-rasterizer']
 };
 
-const browserWrapper = { chromium: null };
+const standardOptions = { headless: true };
+
+const browserWrapper = { chromium: null, firefox: null, webkit: null };
 
 const deviceNames = Object.keys(devices);
 
@@ -48,29 +50,38 @@ function getRandomDevice() {
   return { name: randomDeviceName, config: devices[randomDeviceName] };
 }
 
-async function getBrowser(forceRecreate = false) {
-  if (forceRecreate || !browserWrapper.chromium || !browserWrapper.chromium.isConnected()) {
-    if (browserWrapper.chromium) {
+async function getBrowser(engine, forceRecreate = false) {
+  if (forceRecreate || !browserWrapper[engine] || !browserWrapper[engine].isConnected()) {
+    if (browserWrapper[engine]) {
       try {
-        await withTimeout(browserWrapper.chromium.close(), 5000);
+        await withTimeout(browserWrapper[engine].close(), 5000);
       } catch (e) {}
     }
-    browserWrapper.chromium = await chromium.launch(chromiumOptions).catch(error => {
-      console.error("❌ Failed to launch Chromium browser:", error.message);
+    const launchOptions = engine === 'chromium' ? chromiumOptions : standardOptions;
+    const launcher = engine === 'chromium' ? chromium : (engine === 'firefox' ? firefox : webkit);
+    
+    browserWrapper[engine] = await launcher.launch(launchOptions).catch(error => {
+      console.error(`❌ Failed to launch ${engine} browser:`, error.message);
       return null;
     });
   }
-  return browserWrapper.chromium;
+  return browserWrapper[engine];
 }
 
 async function runInstance(instanceIndex) {
+  const availableEngines = Object.keys(browserWrapper).filter(
+    key => browserWrapper[key] && browserWrapper[key].isConnected()
+  );
+  
+  if (availableEngines.length === 0) {
+    return false;
+  }
+
+  const randomEngine = availableEngines[getRandomInt(0, availableEngines.length - 1)];
+  const browser = browserWrapper[randomEngine];
+
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     const randomDevice = getRandomDevice();
-    const browser = await getBrowser();
-    if (!browser) {
-      await sleep(2000);
-      continue;
-    }
 
     const result = await browser.newContext({
       ...randomDevice.config,
@@ -81,13 +92,13 @@ async function runInstance(instanceIndex) {
       context.setDefaultNavigationTimeout(PROXY_TIMEOUT);
       const page = await context.newPage();
 
-      console.log(`[Instance ${instanceIndex}] Starting as ${randomDevice.name} (Attempt ${attempt}/${MAX_RETRIES})`);
+      console.log(`[Instance ${instanceIndex}] Starting on ${randomEngine} as ${randomDevice.name} (Attempt ${attempt}/${MAX_RETRIES})`);
 
       const success = await page.goto(TARGET_URL, {
         timeout: PROXY_TIMEOUT,
         waitUntil: 'domcontentloaded'
       }).then(async () => {
-        console.log(`[Instance ${instanceIndex}] Page loaded. Starting ${SESSION_DURATION / 1000}s session with move and click...`);
+        console.log(`[Instance ${instanceIndex}] Page loaded. Starting ${SESSION_DURATION / 1000}s session...`);
 
         const timeBeforeClick = getRandomInt(Math.floor(SESSION_DURATION * 0.2), Math.floor(SESSION_DURATION * 0.8));
         const timeAfterClick = SESSION_DURATION - timeBeforeClick;
@@ -96,9 +107,11 @@ async function runInstance(instanceIndex) {
 
         const targetX = getRandomInt(100, 800);
         const targetY = getRandomInt(100, 800);
-        await page.mouse.move(targetX, targetY, { steps: 5 });
+        const steps = getRandomInt(5, 6);
+        
+        await page.mouse.move(targetX, targetY, { steps });
         await page.mouse.click(targetX, targetY);
-        console.log(`[Instance ${instanceIndex}] Clicked at (${targetX}, ${targetY}). Waiting remaining ${timeAfterClick / 1000}s...`);
+        console.log(`[Instance ${instanceIndex}] Clicked at (${targetX}, ${targetY}) after ${steps} steps. Waiting remaining ${timeAfterClick / 1000}s...`);
 
         await sleep(timeAfterClick);
         console.log(`[Instance ${instanceIndex}] ✅ Completed ${SESSION_DURATION / 1000}s session successfully.`);
@@ -137,8 +150,14 @@ async function runMassiveTraffic() {
     console.log(`--- Starting Cycle (instances ${i}–${segmentEnd - 1}) ---`);
     console.log(`======================================================\n`);
 
-    const browser = await getBrowser(true);
-    if (!browser) {
+    const launches = await Promise.all([
+      getBrowser('chromium', true),
+      getBrowser('firefox', true),
+      getBrowser('webkit', true)
+    ]).catch(() => null);
+
+    if (!launches || (!browserWrapper.chromium && !browserWrapper.firefox && !browserWrapper.webkit)) {
+      console.error("❌ Failed to launch any browser engines.");
       await sleep(5000);
       continue;
     }
@@ -174,10 +193,15 @@ async function runMassiveTraffic() {
 
     await runQueue();
 
-    if (browserWrapper.chromium) {
-      await withTimeout(browserWrapper.chromium.close(), 15000).catch(() => {});
-      browserWrapper.chromium = null;
-    }
+    await Promise.all([
+      browserWrapper.chromium ? withTimeout(browserWrapper.chromium.close(), 15000) : Promise.resolve(),
+      browserWrapper.firefox ? withTimeout(browserWrapper.firefox.close(), 15000) : Promise.resolve(),
+      browserWrapper.webkit ? withTimeout(browserWrapper.webkit.close(), 15000) : Promise.resolve()
+    ]).catch(() => {});
+
+    browserWrapper.chromium = null;
+    browserWrapper.firefox = null;
+    browserWrapper.webkit = null;
   }
 
   console.log(`\nTraffic Campaign Finished. Total Succeeded: ${succeeded}, Total Failed: ${failed}.`);
