@@ -12,7 +12,7 @@ const TARGET_URL = process.env.TARGET_URL || 'https://example.com/target';
 const TOTAL_CLICKS_GOAL = 10000000;
 
 const BATCH_SIZE = 300;
-const STAGGER_DELAY = 3000;
+const STAGGER_DELAY = 1000;
 const MAX_RETRIES = 2;
 const SESSION_DURATION = 30000;
 const PROXY_TIMEOUT = 120000;
