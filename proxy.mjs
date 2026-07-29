@@ -10,18 +10,15 @@ const PROXY_CONFIG = {
 const TARGET_URL = 'https://daleelerah.info/pop-go/62492';
 const TOTAL_CLICKS_GOAL = 10000000;
 
-const isWin = os.platform() === 'win32';
-const BATCH_SIZE = isWin ? 5 : 120;
-const STAGGER_DELAY = isWin ? 1000 : 100;
+const BATCH_SIZE = 480;
+const STAGGER_DELAY = 30;
 const MAX_RETRIES = 2;
 const SESSION_DURATION = 60000;
 const PROXY_TIMEOUT = 120000;
 
 const chromiumOptions = { 
   headless: true,
-  args: isWin 
-    ? ['--disable-gpu', '--disable-software-rasterizer']
-    : ['--disable-dev-shm-usage', '--no-sandbox', '--disable-gpu', '--disable-software-rasterizer']
+  args: ['--disable-gpu', '--disable-software-rasterizer', '--disable-dev-shm-usage', '--no-sandbox']
 };
 
 const standardOptions = { headless: true };
@@ -144,8 +141,8 @@ async function runMassiveTraffic() {
   let failed = 0;
   let completedCount = 0;
 
-  for (let i = 0; i < TOTAL_CLICKS_GOAL; i += 500) {
-    const segmentEnd = Math.min(i + 500, TOTAL_CLICKS_GOAL);
+  for (let i = 0; i < TOTAL_CLICKS_GOAL; i += 1000) {
+    const segmentEnd = Math.min(i + 1000, TOTAL_CLICKS_GOAL);
     console.log(`\n======================================================`);
     console.log(`--- Starting Cycle (instances ${i}–${segmentEnd - 1}) ---`);
     console.log(`======================================================\n`);
