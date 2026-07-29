@@ -12,7 +12,7 @@ const TARGET_URL = 'https://daleelerah.info/pop-go/62492';
 const TOTAL_CLICKS_GOAL = 10000000;
 
 const BATCH_SIZE = 300;
-const STAGGER_DELAY = 1000;
+const STAGGER_DELAY = 800;
 const MAX_RETRIES = 2;
 const SESSION_DURATION = 30000;
 const PROXY_TIMEOUT = 30000;
