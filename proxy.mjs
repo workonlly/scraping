@@ -2,11 +2,11 @@ import { chromium, firefox, webkit, devices } from 'playwright';
 import os from 'os';
 import { exec } from 'child_process';
 
-const PROXY_CONFIG = {
-  server: 'http://107.151.249.39:4822',
-  username: 'abdullahUK',
-  password: 'abdullahUK'
-};
+const PROXY_POOL = [
+  { server: 'http://107.151.249.106:3996', username: 'Huzaifach07', password: 'echocore27' },
+  { server: 'http://107.151.249.106:3570', username: 'Huzaifach07', password: 'echocore27' },
+  { server: 'http://107.151.249.106:3371', username: 'Huzaifach07', password: 'echocore27' }
+];
 
 const TARGET_URL = process.env.TARGET_URL || 'https://example.com/target';
 const TOTAL_CLICKS_GOAL = 10000000;
@@ -98,6 +98,7 @@ async function runInstance(instanceIndex) {
     const randomUserAgent = randomDevice.config.userAgent + " " + getRandomInt(10, 99) + ".0.0." + getRandomInt(0, 9);
     const randomLocale = locales[getRandomInt(0, locales.length - 1)];
     const randomTimezone = timezones[getRandomInt(0, timezones.length - 1)];
+    const proxyConfig = PROXY_POOL[instanceIndex % PROXY_POOL.length];
 
     const result = await browser.newContext({
       ...randomDevice.config,
@@ -108,14 +109,14 @@ async function runInstance(instanceIndex) {
       userAgent: randomUserAgent,
       locale: randomLocale,
       timezoneId: randomTimezone,
-      proxy: PROXY_CONFIG,
+      proxy: proxyConfig,
       ignoreHTTPSErrors: true
     }).then(async (context) => {
       context.setDefaultTimeout(PROXY_TIMEOUT);
       context.setDefaultNavigationTimeout(PROXY_TIMEOUT);
       const page = await context.newPage();
 
-      console.log(`[Instance ${instanceIndex}] Starting on ${randomEngine} as ${randomDevice.name} (Attempt ${attempt}/${MAX_RETRIES})`);
+      console.log(`[Instance ${instanceIndex}] Starting on ${randomEngine} using proxy port ${proxyConfig.server.split(':').pop()} (Attempt ${attempt}/${MAX_RETRIES})`);
 
       const success = await page.goto(TARGET_URL, {
         timeout: PROXY_TIMEOUT,
@@ -228,7 +229,6 @@ async function runMassiveTraffic() {
     browserWrapper.chromium = null;
     browserWrapper.firefox = null;
     browserWrapper.webkit = null;
-
   }
 
   console.log(`\nTraffic Campaign Finished. Total Succeeded: ${succeeded}, Total Failed: ${failed}.`);
