@@ -11,11 +11,11 @@ const PROXY_CONFIG = {
 const TARGET_URL = process.env.TARGET_URL || 'https://example.com/target';
 const TOTAL_CLICKS_GOAL = 10000000;
 
-const BATCH_SIZE = 150;
-const STAGGER_DELAY = 150;
+const BATCH_SIZE = 300;
+const STAGGER_DELAY = 3000;
 const MAX_RETRIES = 2;
 const SESSION_DURATION = 30000;
-const PROXY_TIMEOUT = 60000;
+const PROXY_TIMEOUT = 120000;
 
 const chromiumOptions = {
   headless: true,
@@ -167,8 +167,8 @@ async function runMassiveTraffic() {
   let failed = 0;
   let completedCount = 0;
 
-  for (let i = 0; i < TOTAL_CLICKS_GOAL; i += 150) {
-    const segmentEnd = Math.min(i + 150, TOTAL_CLICKS_GOAL);
+  for (let i = 0; i < TOTAL_CLICKS_GOAL; i += 300) {
+    const segmentEnd = Math.min(i + 300, TOTAL_CLICKS_GOAL);
     console.log(`\n======================================================`);
     console.log(`--- Starting Cycle (instances ${i}–${segmentEnd - 1}) ---`);
     console.log(`======================================================\n`);
