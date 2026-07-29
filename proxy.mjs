@@ -15,7 +15,7 @@ const BATCH_SIZE = 150;
 const STAGGER_DELAY = 150;
 const MAX_RETRIES = 2;
 const SESSION_DURATION = 30000;
-const PROXY_TIMEOUT = 150000;
+const PROXY_TIMEOUT = 60000;
 
 const chromiumOptions = {
   headless: true,
@@ -119,7 +119,7 @@ async function runInstance(instanceIndex) {
 
       const success = await page.goto(TARGET_URL, {
         timeout: PROXY_TIMEOUT,
-        waitUntil: 'load'
+        waitUntil: 'domcontentloaded'
       }).then(async () => {
         console.log(`[Instance ${instanceIndex}] Page loaded. Starting ${SESSION_DURATION / 1000}s session...`);
 
