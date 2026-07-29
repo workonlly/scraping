@@ -83,7 +83,7 @@ let sharedBrowser = null;
 async function launchBrowser() {
   try {
     sharedBrowser = await chromium.launch(LAUNCH_OPTIONS);
-    console.log(`[Browser] Chromium launched (PID: ${sharedBrowser.process()?.pid ?? 'unknown'})`);
+    console.log(`[Browser] Chromium launched successfully`);
     return true;
   } catch (err) {
     console.error(`[Browser] ❌ Failed to launch Chromium: ${err.message}`);
