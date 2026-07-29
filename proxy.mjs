@@ -15,7 +15,7 @@ const BATCH_SIZE = 400;
 const STAGGER_DELAY = 600;
 const MAX_RETRIES = 2;
 const SESSION_DURATION = 30000;
-const PROXY_TIMEOUT = 30000;
+const PROXY_TIMEOUT = 60000;
 
 const chromiumOptions = {
   headless: true,
@@ -117,7 +117,7 @@ async function runInstance(instanceIndex) {
           proxy: proxyConfig,
           ignoreHTTPSErrors: true
         }),
-        10000
+        25000
       );
       if (!context) {
         throw new Error("Context creation timed out");
@@ -138,7 +138,7 @@ async function runInstance(instanceIndex) {
           await context.close().catch(() => {});
         } catch (e) {}
       }
-    }, 45000);
+    }, 75000);
 
     const result = await withTimeout(
       (async () => {
@@ -171,7 +171,7 @@ async function runInstance(instanceIndex) {
         console.log(`[Instance ${instanceIndex}] ✅ Completed ${SESSION_DURATION / 1000}s session successfully.`);
         return true;
       })(),
-      40000 // Cut off active operations at 40s to allow graceful context closing by 45s
+      70000 // Cut off active operations at 70s to allow graceful context closing by 75s
     ).then((res) => {
       if (res === null) {
         throw new Error("Active session timed out");
