@@ -11,8 +11,8 @@ const PROXY_POOL = [
 const TARGET_URL = 'https://daleelerah.info/pop-go/62492';
 const TOTAL_CLICKS_GOAL = 10000000;
 
-const BATCH_SIZE = 300;
-const STAGGER_DELAY = 800;
+const BATCH_SIZE = 400;
+const STAGGER_DELAY = 600;
 const MAX_RETRIES = 2;
 const SESSION_DURATION = 30000;
 const PROXY_TIMEOUT = 30000;
@@ -205,8 +205,8 @@ async function runMassiveTraffic() {
   let failed = 0;
   let completedCount = 0;
 
-  for (let i = 0; i < TOTAL_CLICKS_GOAL; i += 300) {
-    const segmentEnd = Math.min(i + 300, TOTAL_CLICKS_GOAL);
+  for (let i = 0; i < TOTAL_CLICKS_GOAL; i += 400) {
+    const segmentEnd = Math.min(i + 400, TOTAL_CLICKS_GOAL);
     console.log(`\n======================================================`);
     console.log(`--- Starting Cycle (instances ${i}–${segmentEnd - 1}) ---`);
     console.log(`======================================================\n`);
