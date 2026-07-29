@@ -1,5 +1,6 @@
 import { chromium, firefox, webkit, devices } from 'playwright';
 import os from 'os';
+import { exec } from 'child_process';
 
 const PROXY_CONFIG = {
   server: 'http://107.151.249.39:4822',
@@ -10,22 +11,20 @@ const PROXY_CONFIG = {
 const TARGET_URL = process.env.TARGET_URL || 'https://example.com/target';
 const TOTAL_CLICKS_GOAL = 10000000;
 
-const BATCH_SIZE = 100;
-const STAGGER_DELAY = 250;
+const BATCH_SIZE = 500;
+const STAGGER_DELAY = 100;
 const MAX_RETRIES = 2;
 const SESSION_DURATION = 30000;
 const PROXY_TIMEOUT = 150000;
-
-const chromiumOptions = { 
-  headless: true,
-  args: ['--disable-gpu', '--disable-software-rasterizer', '--disable-dev-shm-usage', '--no-sandbox']
-};
 
 const standardOptions = { headless: true };
 
 const browserWrapper = { chromium: null, firefox: null, webkit: null };
 
 const deviceNames = Object.keys(devices);
+
+const locales = ['en-US', 'en-GB', 'en-CA', 'fr-FR', 'de-DE'];
+const timezones = ['America/New_York', 'Europe/London', 'America/Los_Angeles', 'Europe/Paris'];
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -47,17 +46,23 @@ function getRandomDevice() {
   return { name: randomDeviceName, config: devices[randomDeviceName] };
 }
 
+function hardReset() {
+  console.log("Executing system hard reset...");
+  exec('taskkill /F /IM chrome-headless-shell.exe /T', () => {});
+  exec('taskkill /F /IM firefox.exe /T', () => {});
+  exec('taskkill /F /IM webkit.exe /T', () => {});
+  const tempDir = os.tmpdir();
+  exec(`powershell.exe -Command "Remove-Item -Path '${tempDir}\\playwright_*' -Recurse -Force -ErrorAction SilentlyContinue"`, () => {});
+}
+
 async function getBrowser(engine, forceRecreate = false) {
   if (forceRecreate || !browserWrapper[engine] || !browserWrapper[engine].isConnected()) {
     if (browserWrapper[engine]) {
-      try {
-        await withTimeout(browserWrapper[engine].close(), 5000);
-      } catch (e) {}
+      await withTimeout(browserWrapper[engine].close(), 5000);
     }
-    const launchOptions = engine === 'chromium' ? chromiumOptions : standardOptions;
     const launcher = engine === 'chromium' ? chromium : (engine === 'firefox' ? firefox : webkit);
     
-    browserWrapper[engine] = await launcher.launch(launchOptions).catch(error => {
+    browserWrapper[engine] = await launcher.launch(standardOptions).catch(error => {
       console.error(`❌ Failed to launch ${engine} browser:`, error.message);
       return null;
     });
@@ -75,13 +80,28 @@ async function runInstance(instanceIndex) {
   }
 
   const randomEngine = availableEngines[getRandomInt(0, availableEngines.length - 1)];
-  const browser = browserWrapper[randomEngine];
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     const randomDevice = getRandomDevice();
+    const browser = await getBrowser(randomEngine);
+    if (!browser) {
+      await sleep(2000);
+      continue;
+    }
+
+    const randomUserAgent = randomDevice.config.userAgent + " " + getRandomInt(10, 99) + ".0.0." + getRandomInt(0, 9);
+    const randomLocale = locales[getRandomInt(0, locales.length - 1)];
+    const randomTimezone = timezones[getRandomInt(0, timezones.length - 1)];
 
     const result = await browser.newContext({
       ...randomDevice.config,
+      viewport: {
+        width: getRandomInt(375, 1440),
+        height: getRandomInt(600, 900)
+      },
+      userAgent: randomUserAgent,
+      locale: randomLocale,
+      timezoneId: randomTimezone,
       proxy: PROXY_CONFIG,
       ignoreHTTPSErrors: true
     }).then(async (context) => {
@@ -141,11 +161,14 @@ async function runMassiveTraffic() {
   let failed = 0;
   let completedCount = 0;
 
-  for (let i = 0; i < TOTAL_CLICKS_GOAL; i += 1000) {
-    const segmentEnd = Math.min(i + 1000, TOTAL_CLICKS_GOAL);
+  for (let i = 0; i < TOTAL_CLICKS_GOAL; i += 500) {
+    const segmentEnd = Math.min(i + 500, TOTAL_CLICKS_GOAL);
     console.log(`\n======================================================`);
     console.log(`--- Starting Cycle (instances ${i}–${segmentEnd - 1}) ---`);
     console.log(`======================================================\n`);
+
+    hardReset();
+    await sleep(3000);
 
     const launches = await Promise.all([
       getBrowser('chromium', true),
@@ -199,6 +222,7 @@ async function runMassiveTraffic() {
     browserWrapper.chromium = null;
     browserWrapper.firefox = null;
     browserWrapper.webkit = null;
+
   }
 
   console.log(`\nTraffic Campaign Finished. Total Succeeded: ${succeeded}, Total Failed: ${failed}.`);
