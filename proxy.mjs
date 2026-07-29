@@ -118,10 +118,16 @@ async function runInstance(instanceIndex) {
 
       console.log(`[Instance ${instanceIndex}] Starting on ${randomEngine} using proxy port ${proxyConfig.server.split(':').pop()} (Attempt ${attempt}/${MAX_RETRIES})`);
 
-      const success = await page.goto(TARGET_URL, {
-        timeout: PROXY_TIMEOUT,
-        waitUntil: 'domcontentloaded'
-      }).then(async () => {
+      const success = await withTimeout(
+        page.goto(TARGET_URL, {
+          timeout: PROXY_TIMEOUT,
+          waitUntil: 'domcontentloaded'
+        }),
+        PROXY_TIMEOUT + 5000
+      ).then(async (gotoResult) => {
+        if (gotoResult === null) {
+          throw new Error("Navigation timeout wrapper triggered");
+        }
         console.log(`[Instance ${instanceIndex}] Page loaded. Starting ${SESSION_DURATION / 1000}s session...`);
 
         const timeBeforeClick = getRandomInt(Math.floor(SESSION_DURATION * 0.2), Math.floor(SESSION_DURATION * 0.8));
@@ -145,7 +151,7 @@ async function runInstance(instanceIndex) {
         return false;
       });
 
-      await withTimeout(context.close(), 10000);
+      await withTimeout(context.close().catch(() => {}), 15000);
       return success;
     }).catch(async (error) => {
       console.error(`[Instance ${instanceIndex}] ❌ Setup failed: ${error.message}`);
