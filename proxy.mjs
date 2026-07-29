@@ -36,8 +36,11 @@ const LAUNCH_OPTIONS = {
     '--disable-default-apps',
     '--mute-audio',
     '--no-first-run',
-    '--no-zygote',
-    '--single-process'  // Reduces OS handle usage significantly
+    '--disable-sync',
+    '--disable-translate',
+    '--hide-scrollbars',
+    '--metrics-recording-only',
+    '--safebrowsing-disable-auto-update'
   ]
 };
 
