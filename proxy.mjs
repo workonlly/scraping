@@ -8,7 +8,7 @@ const PROXY_POOL = [
   { server: 'http://107.151.249.106:3371', username: 'Huzaifach07', password: 'echocore27' }
 ];
 
-const TARGET_URL = process.env.TARGET_URL || 'https://example.com/target';
+const TARGET_URL = 'https://daleelerah.info/pop-go/62492';
 const TOTAL_CLICKS_GOAL = 10000000;
 
 const BATCH_SIZE = 300;
