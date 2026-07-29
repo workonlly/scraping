@@ -7,14 +7,14 @@ const PROXY_CONFIG = {
   password: 'abdullahUK'
 };
 
-const TARGET_URL = 'https://daleelerah.info/pop-go/62492';
+const TARGET_URL = process.env.TARGET_URL || 'https://example.com/target';
 const TOTAL_CLICKS_GOAL = 10000000;
 
-const BATCH_SIZE = 480;
-const STAGGER_DELAY = 30;
+const BATCH_SIZE = 100;
+const STAGGER_DELAY = 250;
 const MAX_RETRIES = 2;
-const SESSION_DURATION = 60000;
-const PROXY_TIMEOUT = 120000;
+const SESSION_DURATION = 30000;
+const PROXY_TIMEOUT = 150000;
 
 const chromiumOptions = { 
   headless: true,
@@ -93,7 +93,7 @@ async function runInstance(instanceIndex) {
 
       const success = await page.goto(TARGET_URL, {
         timeout: PROXY_TIMEOUT,
-        waitUntil: 'domcontentloaded'
+        waitUntil: 'load'
       }).then(async () => {
         console.log(`[Instance ${instanceIndex}] Page loaded. Starting ${SESSION_DURATION / 1000}s session...`);
 
@@ -104,7 +104,7 @@ async function runInstance(instanceIndex) {
 
         const targetX = getRandomInt(100, 800);
         const targetY = getRandomInt(100, 800);
-        const steps = getRandomInt(5, 6);
+        const steps = 10;
         
         await page.mouse.move(targetX, targetY, { steps });
         await page.mouse.click(targetX, targetY);
