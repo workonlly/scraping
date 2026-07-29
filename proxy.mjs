@@ -12,7 +12,7 @@ const TARGET_URL = 'https://daleelerah.info/pop-go/62492';
 const TOTAL_CLICKS_GOAL = 10000000;
 
 const BATCH_SIZE = 100;
-const STAGGER_DELAY = 1000;
+const STAGGER_DELAY = 500;
 const MAX_RETRIES = 2;
 const SESSION_DURATION = 30000;
 const PROXY_TIMEOUT = 120000;
@@ -70,10 +70,16 @@ async function runInstance(instanceIndex) {
     
     let browser = null;
     try {
-      browser = await launcher.launch({
-        ...launchOptions,
-        proxy: proxyConfig
-      });
+      browser = await withTimeout(
+        launcher.launch({
+          ...launchOptions,
+          proxy: proxyConfig
+        }),
+        45000
+      );
+      if (browser === null) {
+        throw new Error("Browser launch timeout triggered");
+      }
     } catch (launchErr) {
       console.error(`[Instance ${instanceIndex}] ❌ Browser launch failed on ${randomEngine}: ${launchErr.message}`);
       await sleep(2000);
@@ -84,17 +90,23 @@ async function runInstance(instanceIndex) {
     const randomLocale = locales[getRandomInt(0, locales.length - 1)];
     const randomTimezone = timezones[getRandomInt(0, timezones.length - 1)];
 
-    const result = await browser.newContext({
-      ...randomDevice.config,
-      viewport: {
-        width: getRandomInt(375, 1440),
-        height: getRandomInt(600, 900)
-      },
-      userAgent: randomUserAgent,
-      locale: randomLocale,
-      timezoneId: randomTimezone,
-      ignoreHTTPSErrors: true
-    }).then(async (context) => {
+    const result = await withTimeout(
+      browser.newContext({
+        ...randomDevice.config,
+        viewport: {
+          width: getRandomInt(375, 1440),
+          height: getRandomInt(600, 900)
+        },
+        userAgent: randomUserAgent,
+        locale: randomLocale,
+        timezoneId: randomTimezone,
+        ignoreHTTPSErrors: true
+      }),
+      25000
+    ).then(async (context) => {
+      if (context === null) {
+        throw new Error("newContext timeout triggered");
+      }
       context.setDefaultTimeout(PROXY_TIMEOUT);
       context.setDefaultNavigationTimeout(PROXY_TIMEOUT);
       const page = await context.newPage();
