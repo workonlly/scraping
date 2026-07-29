@@ -11,11 +11,16 @@ const PROXY_CONFIG = {
 const TARGET_URL = process.env.TARGET_URL || 'https://example.com/target';
 const TOTAL_CLICKS_GOAL = 10000000;
 
-const BATCH_SIZE = 500;
-const STAGGER_DELAY = 100;
+const BATCH_SIZE = 150;
+const STAGGER_DELAY = 150;
 const MAX_RETRIES = 2;
 const SESSION_DURATION = 30000;
 const PROXY_TIMEOUT = 150000;
+
+const chromiumOptions = {
+  headless: true,
+  args: ['--disable-gpu', '--disable-software-rasterizer', '--disable-dev-shm-usage', '--no-sandbox', '--disable-webgl']
+};
 
 const standardOptions = { headless: true };
 
@@ -61,8 +66,9 @@ async function getBrowser(engine, forceRecreate = false) {
       await withTimeout(browserWrapper[engine].close(), 5000);
     }
     const launcher = engine === 'chromium' ? chromium : (engine === 'firefox' ? firefox : webkit);
+    const launchOptions = engine === 'chromium' ? chromiumOptions : standardOptions;
     
-    browserWrapper[engine] = await launcher.launch(standardOptions).catch(error => {
+    browserWrapper[engine] = await launcher.launch(launchOptions).catch(error => {
       console.error(`❌ Failed to launch ${engine} browser:`, error.message);
       return null;
     });
@@ -161,8 +167,8 @@ async function runMassiveTraffic() {
   let failed = 0;
   let completedCount = 0;
 
-  for (let i = 0; i < TOTAL_CLICKS_GOAL; i += 500) {
-    const segmentEnd = Math.min(i + 500, TOTAL_CLICKS_GOAL);
+  for (let i = 0; i < TOTAL_CLICKS_GOAL; i += 150) {
+    const segmentEnd = Math.min(i + 150, TOTAL_CLICKS_GOAL);
     console.log(`\n======================================================`);
     console.log(`--- Starting Cycle (instances ${i}–${segmentEnd - 1}) ---`);
     console.log(`======================================================\n`);
