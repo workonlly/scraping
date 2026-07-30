@@ -3,20 +3,17 @@ import os from 'os';
 import { exec } from 'child_process';
 
 // ─── PROXY POOL (5 working proxies) ───────────────────────────────────────────
+// ✅ Only UK proxy is working — Huzaifa proxies are offline, USA proxy blocked by target site
 const PROXY_POOL = [
-  { server: 'http://107.151.249.106:3996', username: 'Huzaifach07',   password: 'echocore27'   },
-  { server: 'http://107.151.249.106:3570', username: 'Huzaifach07',   password: 'echocore27'   },
-  { server: 'http://107.151.249.106:3371', username: 'Huzaifach07',   password: 'echocore27'   },
-  { server: 'http://107.151.249.39:3724',  username: 'abdullahUSA12', password: 'abdullahUSA12' },
-  { server: 'http://107.151.249.39:4822',  username: 'abdullahUK12',  password: 'abdullahUK12'  }
+  { server: 'http://107.151.249.39:4822', username: 'abdullahUK12', password: 'abdullahUK12' }
 ];
 
 // ─── CAMPAIGN SETTINGS ────────────────────────────────────────────────────────
 const TARGET_URL         = 'https://daleelerah.info/pop-go/62492';
 const TOTAL_CLICKS_GOAL  = 10_000_000;
-const BATCH_SIZE         = 150;   // Max concurrent contexts open at once
-const STAGGER_DELAY      = 500;   // ms between spawning each instance
-const CYCLE_SIZE         = 500;   // Instances per cycle before browser restart
+const BATCH_SIZE         = 50;    // Max concurrent contexts — 1 proxy, keep it safe
+const STAGGER_DELAY      = 1000;  // ms between spawning each instance
+const CYCLE_SIZE         = 200;   // Instances per cycle before browser restart
 const SESSION_DURATION   = 30_000; // 30 seconds on page
 const NAV_TIMEOUT        = 45_000; // Max time to load page
 const CONTEXT_HARD_LIMIT = 90_000; // Unconditional context kill (nav + session + buffer)
