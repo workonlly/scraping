@@ -1,288 +1,220 @@
-import { chromium, devices } from 'playwright';
+import { chromium, firefox, webkit, devices } from 'playwright';
 import os from 'os';
 import { exec } from 'child_process';
 
-// ─── PROXY POOL (5 working proxies) ───────────────────────────────────────────
-// ✅ Only UK proxy is working — Huzaifa proxies are offline, USA proxy blocked by target site
 const PROXY_POOL = [
-  { server: 'http://107.151.249.39:4822', username: 'abdullahUK12', password: 'abdullahUK12' }
+  { server: 'http://107.151.249.106:3996', username: 'Huzaifach07', password: 'echocore27' },
+  { server: 'http://107.151.249.106:3570', username: 'Huzaifach07', password: 'echocore27' },
+  { server: 'http://107.151.249.106:3371', username: 'Huzaifach07', password: 'echocore27' }
 ];
 
-// ─── CAMPAIGN SETTINGS ────────────────────────────────────────────────────────
-const TARGET_URL         = 'https://daleelerah.info/pop-go/62492';
-const TOTAL_CLICKS_GOAL  = 10_000_000;
-const BATCH_SIZE         = 50;    // Max concurrent contexts — 1 proxy, keep it safe
-const STAGGER_DELAY      = 1000;  // ms between spawning each instance
-const CYCLE_SIZE         = 200;   // Instances per cycle before browser restart
-const SESSION_DURATION   = 30_000; // 30 seconds on page
-const NAV_TIMEOUT        = 45_000; // Max time to load page
-const CONTEXT_HARD_LIMIT = 90_000; // Unconditional context kill (nav + session + buffer)
+const TARGET_URL = 'https://daleelerah.info/pop-go/62492';
+const TOTAL_CLICKS_GOAL = 10000000;
 
-// ─── CHROMIUM LAUNCH OPTIONS ──────────────────────────────────────────────────
-// Only use Chromium: it is the most stable engine under high concurrency on Windows
-const LAUNCH_OPTIONS = {
+const BATCH_SIZE = 100;
+const STAGGER_DELAY = 500;
+const MAX_RETRIES = 2;
+const SESSION_DURATION = 30000;
+const PROXY_TIMEOUT = 120000;
+
+const chromiumOptions = {
   headless: true,
-  args: [
-    '--disable-gpu',
-    '--disable-software-rasterizer',
-    '--disable-dev-shm-usage',
-    '--no-sandbox',
-    '--disable-webgl',
-    '--disable-extensions',
-    '--disable-background-networking',
-    '--disable-default-apps',
-    '--mute-audio',
-    '--no-first-run',
-    '--disable-sync',
-    '--disable-translate',
-    '--hide-scrollbars',
-    '--metrics-recording-only',
-    '--safebrowsing-disable-auto-update'
-  ]
+  args: ['--disable-gpu', '--disable-software-rasterizer', '--disable-dev-shm-usage', '--no-sandbox', '--disable-webgl']
 };
 
-// ─── DEVICE PROFILES (desktop only — mobile causes extra render overhead) ─────
-const DESKTOP_USER_AGENTS = [
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
-];
+const standardOptions = { headless: true };
 
-const LOCALES   = ['en-US', 'en-GB', 'en-CA'];
-const TIMEZONES = ['America/New_York', 'Europe/London', 'America/Los_Angeles', 'America/Chicago'];
+const deviceNames = Object.keys(devices);
 
-// ─── UTILITIES ────────────────────────────────────────────────────────────────
-const sleep      = (ms) => new Promise(r => setTimeout(r, ms));
-const rand       = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
-const randItem   = (arr) => arr[rand(0, arr.length - 1)];
-const randWidth  = () => rand(1024, 1440);
-const randHeight = () => rand(768, 900);
+const locales = ['en-US', 'en-GB', 'en-CA', 'fr-FR', 'de-DE'];
+const timezones = ['America/New_York', 'Europe/London', 'America/Los_Angeles', 'Europe/Paris'];
 
-// ─── SYSTEM RESET ─────────────────────────────────────────────────────────────
-async function hardReset() {
-  console.log('\n[System] Executing hard reset — killing stale processes...');
-  return new Promise((resolve) => {
-    exec('taskkill /F /IM chrome-headless-shell.exe /T 2>nul & taskkill /F /IM chrome.exe /T 2>nul', () => {
-      const tempDir = os.tmpdir();
-      exec(
-        `powershell.exe -Command "Get-ChildItem -Path '${tempDir}' -Filter 'playwright_*' -Directory -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue"`,
-        () => {
-          console.log('[System] Hard reset complete. Waiting for OS to release handles...');
-          setTimeout(resolve, 5000); // 5s for OS to release handles
-        }
-      );
-    });
-  });
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// ─── BROWSER POOL ─────────────────────────────────────────────────────────────
-let sharedBrowser = null;
-
-async function launchBrowser() {
-  try {
-    sharedBrowser = await chromium.launch(LAUNCH_OPTIONS);
-    console.log(`[Browser] Chromium launched successfully`);
-    return true;
-  } catch (err) {
-    console.error(`[Browser] ❌ Failed to launch Chromium: ${err.message}`);
-    sharedBrowser = null;
-    return false;
-  }
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise(resolve => setTimeout(() => resolve(null), ms))
+  ]);
 }
 
-async function closeBrowser() {
-  if (sharedBrowser) {
-    try {
-      await Promise.race([
-        sharedBrowser.close(),
-        sleep(10000)
-      ]);
-    } catch (e) {}
-    sharedBrowser = null;
-  }
+function getRandomInt(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-// ─── SINGLE INSTANCE ──────────────────────────────────────────────────────────
+function getRandomDevice() {
+  const randomDeviceName = deviceNames[getRandomInt(0, deviceNames.length - 1)];
+  return { name: randomDeviceName, config: devices[randomDeviceName] };
+}
+
+function hardReset() {
+  console.log("Executing system hard reset...");
+  exec('taskkill /F /IM chrome-headless-shell.exe /T', () => { });
+  exec('taskkill /F /IM firefox.exe /T /FI "STATUS eq RUNNING"', () => { });
+  exec('taskkill /F /IM webkit.exe /T /FI "STATUS eq RUNNING"', () => { });
+  const tempDir = os.tmpdir();
+  exec(`powershell.exe -Command "Remove-Item -Path '${tempDir}\\playwright_*' -Recurse -Force -ErrorAction SilentlyContinue"`, () => { });
+}
+
 async function runInstance(instanceIndex) {
-  if (!sharedBrowser || !sharedBrowser.isConnected()) {
-    return false;
-  }
+  const engines = ['chromium', 'firefox', 'webkit'];
+  const randomEngine = engines[getRandomInt(0, engines.length - 1)];
+  const launcher = randomEngine === 'chromium' ? chromium : (randomEngine === 'firefox' ? firefox : webkit);
+  const launchOptions = randomEngine === 'chromium' ? chromiumOptions : standardOptions;
 
-  const proxy       = PROXY_POOL[instanceIndex % PROXY_POOL.length];
-  const userAgent   = randItem(DESKTOP_USER_AGENTS);
-  const locale      = randItem(LOCALES);
-  const timezone    = randItem(TIMEZONES);
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const randomDevice = getRandomDevice();
+    const proxyConfig = PROXY_POOL[instanceIndex % PROXY_POOL.length];
 
-  let context = null;
-  let contextClosed = false;
-
-  // ── Unconditional hard kill timer ─────────────────────────────────────────
-  // No matter what — context is destroyed after CONTEXT_HARD_LIMIT ms
-  let forceKillTimer = null;
-
-  const forceKillContext = async () => {
-    if (!contextClosed && context) {
-      contextClosed = true;
-      try { await context.close(); } catch (_) {}
+    let browser = null;
+    try {
+      browser = await withTimeout(
+        launcher.launch({
+          ...launchOptions,
+          proxy: proxyConfig
+        }),
+        45000
+      );
+      if (browser === null) {
+        throw new Error("Browser launch timeout triggered");
+      }
+    } catch (launchErr) {
+      console.error(`[Instance ${instanceIndex}] ❌ Browser launch failed on ${randomEngine}: ${launchErr.message}`);
+      await sleep(2000);
+      continue;
     }
-  };
 
-  try {
-    // Create context
-    context = await Promise.race([
-      sharedBrowser.newContext({
-        viewport:         { width: randWidth(), height: randHeight() },
-        userAgent:        userAgent,
-        locale:           locale,
-        timezoneId:       timezone,
-        proxy:            proxy,
-        ignoreHTTPSErrors: true,
-        javaScriptEnabled: true
+    const randomUserAgent = randomDevice.config.userAgent + " " + getRandomInt(10, 99) + ".0.0." + getRandomInt(0, 9);
+    const randomLocale = locales[getRandomInt(0, locales.length - 1)];
+    const randomTimezone = timezones[getRandomInt(0, timezones.length - 1)];
+
+    const result = await withTimeout(
+      browser.newContext({
+        ...randomDevice.config,
+        viewport: {
+          width: getRandomInt(375, 1440),
+          height: getRandomInt(600, 900)
+        },
+        userAgent: randomUserAgent,
+        locale: randomLocale,
+        timezoneId: randomTimezone,
+        ignoreHTTPSErrors: true
       }),
-      sleep(20000).then(() => null)  // 20s context creation limit
-    ]);
+      25000
+    ).then(async (context) => {
+      if (context === null) {
+        throw new Error("newContext timeout triggered");
+      }
+      context.setDefaultTimeout(PROXY_TIMEOUT);
+      context.setDefaultNavigationTimeout(PROXY_TIMEOUT);
+      const page = await context.newPage();
 
-    if (!context) {
+      console.log(`[Instance ${instanceIndex}] Launched separate ${randomEngine} process using proxy port ${proxyConfig.server.split(':').pop()} (Attempt ${attempt}/${MAX_RETRIES})`);
+
+      const success = await withTimeout(
+        page.goto(TARGET_URL, {
+          timeout: PROXY_TIMEOUT,
+          waitUntil: 'domcontentloaded'
+        }),
+        PROXY_TIMEOUT + 5000
+      ).then(async (gotoResult) => {
+        if (gotoResult === null) {
+          throw new Error("Navigation timeout wrapper triggered");
+        }
+        console.log(`[Instance ${instanceIndex}] Page loaded. Starting ${SESSION_DURATION / 1000}s session...`);
+
+        const timeBeforeClick = getRandomInt(Math.floor(SESSION_DURATION * 0.2), Math.floor(SESSION_DURATION * 0.8));
+        const timeAfterClick = SESSION_DURATION - timeBeforeClick;
+
+        await sleep(timeBeforeClick);
+
+        const targetX = getRandomInt(100, 800);
+        const targetY = getRandomInt(100, 800);
+        const steps = 10;
+
+        await page.mouse.move(targetX, targetY, { steps });
+        await page.mouse.click(targetX, targetY);
+        console.log(`[Instance ${instanceIndex}] Clicked at (${targetX}, ${targetY}) after ${steps} steps. Waiting remaining ${timeAfterClick / 1000}s...`);
+
+        await sleep(timeAfterClick);
+        console.log(`[Instance ${instanceIndex}] ✅ Completed ${SESSION_DURATION / 1000}s session successfully.`);
+        return true;
+      }).catch(async (error) => {
+        console.error(`[Instance ${instanceIndex}] ❌ Attempt ${attempt} failed: ${error.message}`);
+        return false;
+      });
+
+      await withTimeout(context.close().catch(() => { }), 15000);
+      return success;
+    }).catch(async (error) => {
+      console.error(`[Instance ${instanceIndex}] ❌ Setup failed: ${error.message}`);
       return false;
-    }
-
-    // Arm the unconditional kill timer immediately after context creation
-    forceKillTimer = setTimeout(forceKillContext, CONTEXT_HARD_LIMIT);
-
-    context.setDefaultTimeout(NAV_TIMEOUT);
-    context.setDefaultNavigationTimeout(NAV_TIMEOUT);
-
-    const page = await context.newPage();
-
-    console.log(`[${instanceIndex}] → proxy:${proxy.server.split(':').pop()} | ua:${userAgent.substring(25, 60)}...`);
-
-    // Navigate to target
-    await page.goto(TARGET_URL, {
-      timeout:   NAV_TIMEOUT,
-      waitUntil: 'domcontentloaded'
     });
 
-    console.log(`[${instanceIndex}] ✔ Page loaded — starting ${SESSION_DURATION / 1000}s session`);
+    try {
+      await withTimeout(browser.close(), 15000);
+    } catch (e) { }
 
-    // Random pre-click wait (20–80% of session)
-    const preClick = rand(
-      Math.floor(SESSION_DURATION * 0.2),
-      Math.floor(SESSION_DURATION * 0.5)
-    );
-    await sleep(preClick);
-
-    // Click
-    const x = rand(150, 900);
-    const y = rand(150, 600);
-    await page.mouse.move(x, y, { steps: 5 });
-    await page.mouse.click(x, y);
-
-    // Remaining session time
-    const remaining = SESSION_DURATION - preClick;
-    await sleep(remaining);
-
-    console.log(`[${instanceIndex}] ✅ Done`);
-    return true;
-
-  } catch (err) {
-    // Navigation timeout or proxy reject — just log and move on
-    const msg = err.message.split('\n')[0].substring(0, 80);
-    console.error(`[${instanceIndex}] ❌ ${msg}`);
-    return false;
-
-  } finally {
-    // Always clean up
-    if (forceKillTimer) clearTimeout(forceKillTimer);
-    if (!contextClosed && context) {
-      contextClosed = true;
-      try { await Promise.race([context.close(), sleep(5000)]); } catch (_) {}
+    if (result) return true;
+    if (attempt < MAX_RETRIES) {
+      await sleep(2000 + Math.random() * 3000);
     }
   }
+  return false;
 }
 
-// ─── MAIN CAMPAIGN RUNNER ─────────────────────────────────────────────────────
 async function runMassiveTraffic() {
-  console.log('╔══════════════════════════════════════════════════╗');
-  console.log('║       TRAFFIC CAMPAIGN — STARTING                ║');
-  console.log(`║  Goal: ${TOTAL_CLICKS_GOAL.toLocaleString()} clicks                  ║`);
-  console.log(`║  Batch: ${BATCH_SIZE} concurrent | Cycle: ${CYCLE_SIZE}             ║`);
-  console.log('╚══════════════════════════════════════════════════╝\n');
+  console.log("Starting campaign...");
+  console.log(`Running max concurrency: ${BATCH_SIZE} parallel sessions.\n`);
 
-  let succeeded    = 0;
-  let failed       = 0;
-  let completed    = 0;
-  let cycleStart   = 0;
+  let succeeded = 0;
+  let failed = 0;
+  let completedCount = 0;
 
-  while (cycleStart < TOTAL_CLICKS_GOAL) {
-    const cycleEnd  = Math.min(cycleStart + CYCLE_SIZE, TOTAL_CLICKS_GOAL);
-    const cycleSize = cycleEnd - cycleStart;
+  for (let i = 0; i < TOTAL_CLICKS_GOAL; i += 100) {
+    const segmentEnd = Math.min(i + 100, TOTAL_CLICKS_GOAL);
+    console.log(`\n======================================================`);
+    console.log(`--- Starting Cycle (instances ${i}–${segmentEnd - 1}) ---`);
+    console.log(`======================================================\n`);
 
-    console.log(`\n══════════════════════════════════════════════════`);
-    console.log(`  CYCLE: instances ${cycleStart}–${cycleEnd - 1} (${cycleSize} total)`);
-    console.log(`══════════════════════════════════════════════════\n`);
+    hardReset();
+    await sleep(4000);
 
-    // Kill leftover processes and clear temp dir
-    await hardReset();
+    let activeCount = 0;
+    let startedInSegment = 0;
+    const segmentSize = segmentEnd - i;
 
-    // Launch fresh browser for this cycle
-    const launched = await launchBrowser();
-    if (!launched) {
-      console.error('[Campaign] Cannot launch browser — retrying in 10s...');
-      await sleep(10000);
-      continue;  // Retry the same cycle
-    }
-
-    // ── Queue runner ─────────────────────────────────────────────────────────
-    let activeCount      = 0;
-    let startedThisCycle = 0;
-
-    await new Promise((resolveCycle) => {
-      const tick = async () => {
-        // Launch new instances until batch is full or cycle is done
-        while (startedThisCycle < cycleSize && activeCount < BATCH_SIZE) {
-          const instanceIndex = cycleStart + startedThisCycle;
-          startedThisCycle++;
+    const runQueue = async () => {
+      while (startedInSegment < segmentSize) {
+        if (activeCount < BATCH_SIZE) {
+          const instanceIndex = i + startedInSegment;
+          startedInSegment++;
           activeCount++;
 
-          runInstance(instanceIndex).then((ok) => {
+          runInstance(instanceIndex).then((success) => {
             activeCount--;
-            completed++;
-            if (ok) succeeded++; else failed++;
-            const pct = ((completed / TOTAL_CLICKS_GOAL) * 100).toFixed(2);
-            console.log(`[Progress] ${completed}/${TOTAL_CLICKS_GOAL} (${pct}%) | active:${activeCount} | ✅${succeeded} ❌${failed}`);
-            // If cycle is done and no more active, resolve
-            if (startedThisCycle >= cycleSize && activeCount === 0) {
-              resolveCycle();
-            }
+            completedCount++;
+            if (success) succeeded++; else failed++;
+            console.log(`[Progress] Completed: ${completedCount}/${TOTAL_CLICKS_GOAL} | Active: ${activeCount} | Success: ${succeeded} | Failed: ${failed}`);
           });
 
           await sleep(STAGGER_DELAY);
+        } else {
+          await sleep(50);
         }
+      }
 
-        // Keep ticking while there are still instances to launch or running
-        if (startedThisCycle < cycleSize || activeCount > 0) {
-          setTimeout(tick, 100);
-        }
-      };
+      while (activeCount > 0) {
+        await sleep(100);
+      }
+    };
 
-      tick();
-    });
-
-    // ── Cycle complete — close browser cleanly ────────────────────────────
-    console.log(`\n[Cycle] Complete. Closing browser...`);
-    await closeBrowser();
-    await sleep(2000);
-
-    cycleStart = cycleEnd;
+    await runQueue();
   }
 
-  console.log(`\n╔══════════════════════════════════════════════════╗`);
-  console.log(`║  CAMPAIGN FINISHED                               ║`);
-  console.log(`║  ✅ Succeeded: ${succeeded.toLocaleString().padEnd(33)}║`);
-  console.log(`║  ❌ Failed:    ${failed.toLocaleString().padEnd(33)}║`);
-  console.log(`╚══════════════════════════════════════════════════╝`);
+  console.log(`\nTraffic Campaign Finished. Total Succeeded: ${succeeded}, Total Failed: ${failed}.`);
 }
 
 runMassiveTraffic();
